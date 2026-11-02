@@ -1,6 +1,6 @@
 {
-  "tag": "v0.21.0-mirror.1",
+  "tag": "v0.21.0-mirror.2",
   "upstream_tag": "v0.21.0",
   "upstream_commit": "25e62578b3f750123fc4750253bce97401436260",
-  "patch_sha256": "2df50f172fa7c78eb3a3059e5288b705a3b7f5497fc115b10a1c876a2e6c9e76"
+  "patch_sha256": "2c81c2da2192bbeb937cff48c941e13a1eacd4dc40352c0e49cbbdb695b3670c"
 }
