@@ -8920,7 +8920,7 @@ dependencies = [
 
 [[package]]
 name = "zapfast"
-version = "0.21.0"
+version = "0.21.0-mirror.1"
 dependencies = [
  "aes 0.9.3",
  "anyhow",
