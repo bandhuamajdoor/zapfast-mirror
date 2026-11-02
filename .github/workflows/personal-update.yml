@@ -60,7 +60,9 @@ jobs:
         run: cargo fmt --all --check
       - name: Check the mirroring processing budget
         if: steps.prepare.outputs.changed == 'true'
-        run: python3 personal/benchmark.py
+        run: |
+          python3 personal/benchmark.py
+          python3 personal/audio_benchmark.py
       - name: Clippy (default features)
         if: steps.prepare.outputs.changed == 'true'
         run: cargo clippy --locked --all-targets -- -D warnings
@@ -210,7 +212,10 @@ jobs:
               f"Personal Linux build of upstream {state['upstream_tag']} ({state['upstream_commit']}).\n\n"
               "Includes Settings > Calls > Mirror outgoing camera video, enabled initially and saved across updates. "
               "Both the outgoing video and self-preview are mirrored. No extra camera application or frame queue.\n\n"
-              "Passed formatting, Clippy, tests with default/all features, documentation, a mirroring processing-budget check and an optimized release build. "
+              "Includes continuous, filtered speaker resampling to remove conversion artifacts, with synthetic spectral and packet-continuity regression tests. "
+              "Whether this removes the reported headphone hiss still needs a live-call comparison. "
+              "Participant-change freezes remain under investigation; key-distribution and media-control failures now have targeted diagnostics.\n\n"
+              "Passed formatting, Clippy, tests with default/all features, documentation, processing-budget checks and an optimized release build. "
               "Updates are Ed25519-signed with this fork's publisher key.\n\n"
               "The daily workflow keeps the last working release if the patch or checks fail. "
               "The app downloads personal updates; restarting remains your choice.\n"

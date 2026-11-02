@@ -231,6 +231,11 @@ name or description, in the interface language or in English.
   build; the saved choice survives updates and applies during a call without
   restarting the camera. Incoming video is unaffected. Processing reuses the
   existing frame buffer, with no additional queue or camera application.
+- Call playback uses continuous, filtered rate conversion to suppress
+  high-frequency interpolation images and packet-edge artifacts. The filter
+  keeps state across codec packets without adding a packet queue.
+- Group key-distribution failures and rejected group controls are logged as
+  typed diagnostics, without recording voices or logging encryption keys.
 - This build checks `bandhuamajdoor/zapfast-mirror` for signed personal updates.
   Only releases that retain the mirroring patch and pass the build checks are
   published there. A failed upstream patch application keeps the last release.

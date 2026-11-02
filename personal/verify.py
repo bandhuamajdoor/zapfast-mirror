@@ -7,6 +7,8 @@ required = {
     "src/lib.rs": ["pub mod camera_mirror;"],
     "src/camera.rs": ["crate::camera_mirror::apply_if_enabled(out, size);"],
     "src/calls.rs": ["source.read(&mut bytes, plan.size)", "let luma = &bytes[..luma_len];"],
+    "src/call_audio.rs": ["pub const RATE: u32 = 16_000;", "sink.append(playback.convert(&frame));", "struct Playback"],
+    "src/call_audio/playback_filter.rs": ["struct PlaybackFilter", "actual_call_resampling_no_longer_adds_audible_high_frequency_images"],
     "src/camera_mirror.rs": ["AtomicBool", "row.reverse();", "Ordering::Relaxed"],
     "src/settings.rs": ["pub mirror_camera_video: bool,", "mirror_camera_video: true,"],
     "src/main.rs": ["camera_mirror::set_enabled(settings.mirror_camera_video)"],
@@ -29,4 +31,4 @@ for name, fragments in required.items():
             raise SystemExit(f"Personal build contract missing in {name}: {fragment}")
 key = (root / "personal/update-public-key.hex").read_text().strip()
 assert len(bytes.fromhex(key)) == 32
-print("Mirroring preference, outgoing capture hook, regression tests and publisher trust verified")
+print("Mirroring, continuous filtered playback, regression tests and publisher trust verified")

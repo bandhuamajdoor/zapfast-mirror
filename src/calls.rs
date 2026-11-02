@@ -2764,9 +2764,10 @@ impl Call {
                 let changed = self.group.as_mut()?.apply(update);
                 if changed {
                     log::info!(
-                        "[CALL] group roster call_id={} transaction={} joined={} listed={}",
+                        "[CALL] group roster call_id={} transaction={} rekey_requested={} joined={} listed={}",
                         self.call_id,
                         update.transaction_id,
+                        update.rekey_requested,
                         update
                             .participants
                             .iter()
@@ -2779,6 +2780,16 @@ impl Call {
                     return None;
                 }
                 self.someone_answered().or_else(|| Some(self.update()))
+            }
+            CallEvent::GroupRekeyFailed => {
+                log::warn!("[CALL] group key distribution failed; media may remain gated");
+                self.log_media_stats_at("group-rekey-failed");
+                None
+            }
+            CallEvent::GroupControlRejected { control } => {
+                log::warn!("[CALL] group media control rejected: kind={control:?}");
+                self.log_media_stats_at("group-control-rejected");
+                None
             }
             CallEvent::RelayAllocated => {
                 self.media_ready = true;

@@ -27,6 +27,7 @@ use rodio::buffer::SamplesBuffer;
 pub mod chain;
 pub mod dump;
 pub mod echo;
+mod playback_filter;
 
 pub use echo::FarEnd;
 
@@ -222,6 +223,63 @@ impl Layout {
             out.extend(std::iter::repeat_n(sample, channels));
         }
         out
+    }
+}
+
+/// Streaming playback conversion. Filter state survives every codec packet.
+struct Playback {
+    layout: Layout,
+    filter: playback_filter::PlaybackFilter,
+    previous: Option<i16>,
+    /// Source position in units of the output rate, carried across codec packets.
+    phase: u64,
+}
+
+impl Playback {
+    fn new(layout: Layout) -> Self {
+        Self {
+            layout,
+            filter: playback_filter::PlaybackFilter::new(layout.rate, 1),
+            previous: None,
+            phase: 0,
+        }
+    }
+
+    fn convert(&mut self, frame: &[i16]) -> Vec<f32> {
+        if self.layout.rate <= RATE || frame.is_empty() {
+            return self.layout.convert(frame);
+        }
+        let rate = u64::from(self.layout.rate);
+        let limit = frame.len() as u64 * rate;
+        let length = (limit.saturating_sub(self.phase)).div_ceil(u64::from(RATE));
+        let mut mono = Vec::with_capacity(length as usize);
+        while self.phase < limit {
+            let index = (self.phase / rate) as usize;
+            let fraction = (self.phase % rate) as f32 / self.layout.rate as f32;
+            let a = if index == 0 {
+                self.previous.unwrap_or(frame[0])
+            } else {
+                frame[index - 1]
+            };
+            let b = frame[index];
+            let value = f32::from(a) + (f32::from(b) - f32::from(a)) * fraction;
+            mono.push(value / f32::from(i16::MAX));
+            self.phase += u64::from(RATE);
+        }
+        self.phase -= limit;
+        self.previous = frame.last().copied();
+        // The previous source sample provides continuity without waiting for
+        // the next packet: 1/16000 s (0.0625 ms), never another codec frame.
+        self.filter.process(&mut mono);
+        if self.layout.channels <= 1 {
+            return mono;
+        }
+        let channels = usize::from(self.layout.channels);
+        let mut interleaved = Vec::with_capacity(mono.len() * channels);
+        for sample in mono {
+            interleaved.extend(std::iter::repeat_n(sample, channels));
+        }
+        interleaved
     }
 }
 
@@ -1235,6 +1293,7 @@ fn write_speaker(
             return;
         }
     };
+    let mut playback = Playback::new(sink.layout());
     let mut last_position = Duration::ZERO;
     let mut quiet_since: Option<Instant> = None;
     while !stop.load(Ordering::Relaxed) {
@@ -1246,7 +1305,7 @@ fn write_speaker(
         if stop.load(Ordering::Relaxed) {
             return;
         }
-        sink.append(sink.layout().convert(&frame));
+        sink.append(playback.convert(&frame));
         accepted.store(true, Ordering::Relaxed);
         if sink.failed() {
             // Reopened the way a stalled stream is.
@@ -1730,6 +1789,86 @@ mod tests {
             odd.len(),
             (FRAME_SAMPLES as f64 * 44_100.0 / RATE as f64).floor() as usize
         );
+    }
+
+    #[test]
+    fn speaker_playback_suppresses_images_without_a_packet_of_delay() {
+        fn amplitude(samples: &[f32], rate: u32, hz: f64) -> f64 {
+            let (mut re, mut im) = (0.0, 0.0);
+            for (i, &sample) in samples.iter().enumerate() {
+                let angle = std::f64::consts::TAU * hz * i as f64 / f64::from(rate);
+                re += f64::from(sample) * angle.cos();
+                im += f64::from(sample) * angle.sin();
+            }
+            2.0 * re.hypot(im) / samples.len() as f64
+        }
+        for rate in [44_100, 48_000] {
+            let frame: Vec<i16> = (0..960)
+                .map(|i| {
+                    (12_000.0
+                        * (std::f64::consts::TAU * 6_000.0 * f64::from(i) / f64::from(RATE)).sin())
+                        as i16
+                })
+                .collect();
+            let mut playback = Playback::new(Layout { rate, channels: 1 });
+            let mut output = Vec::new();
+            for _ in 0..20 {
+                output.extend(playback.convert(&frame));
+            }
+            let steady = &output[rate as usize / 10..rate as usize * 11 / 10];
+            let voice = amplitude(steady, rate, 6_000.0);
+            let image = amplitude(steady, rate, 10_000.0);
+            assert!(20.0 * (image / voice).log10() < -40.0);
+
+            let mut impulse = vec![0; 960];
+            impulse[256] = 16_000;
+            let response = Playback::new(Layout { rate, channels: 1 }).convert(&impulse);
+            let peak = response
+                .iter()
+                .enumerate()
+                .max_by(|(_, a), (_, b)| a.abs().total_cmp(&b.abs()))
+                .unwrap()
+                .0;
+            let delay_ms = 1_000.0 * (peak as f64 / f64::from(rate) - 256.0 / f64::from(RATE));
+            assert!(
+                (0.0..0.5).contains(&delay_ms),
+                "added peak delay {delay_ms} ms"
+            );
+            println!(
+                "{rate} Hz: unwanted image {:.1} dB, impulse delay {delay_ms:.3} ms",
+                20.0 * (image / voice).log10()
+            );
+        }
+    }
+
+    #[test]
+    fn playback_conversion_is_continuous_across_codec_packets() {
+        let input: Vec<i16> = (0..4_800)
+            .map(|i| ((i as f64 * 0.61).sin() * 12_000.0) as i16)
+            .collect();
+        for rate in [44_100, 48_000, 48_001] {
+            let layout = Layout { rate, channels: 2 };
+            let whole = Playback::new(layout).convert(&input);
+            let mut streaming = Playback::new(layout);
+            let mut packetized = Vec::new();
+            for packet in input.chunks(960) {
+                packetized.extend(streaming.convert(packet));
+            }
+            assert_eq!(
+                whole.len(),
+                packetized.len(),
+                "no sample-clock drift at {rate}"
+            );
+            let difference = whole
+                .iter()
+                .zip(&packetized)
+                .map(|(a, b)| (a - b).abs())
+                .fold(0.0_f32, f32::max);
+            assert!(
+                difference < 1e-6,
+                "packet edges introduce a {difference} discontinuity at {rate}"
+            );
+        }
     }
 
     #[test]
