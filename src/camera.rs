@@ -125,6 +125,7 @@ impl Source {
                 return false;
             };
             picture.scale_into(size, out);
+            crate::camera_mirror::apply_if_enabled(out, size);
             true
         });
         match converted {

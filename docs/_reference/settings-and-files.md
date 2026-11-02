@@ -224,6 +224,17 @@ name or description, in the interface language or in English.
   them, including people without a local chat. Changes require a connection.
 - **App lock**: hide ZapFast behind a password. See [App lock](#app-lock).
 
+**Calls (personal build)**
+
+- **Mirror outgoing camera video**: horizontally flip the camera for both the
+  local preview and the other participants. Enabled initially in this personal
+  build; the saved choice survives updates and applies during a call without
+  restarting the camera. Incoming video is unaffected. Processing reuses the
+  existing frame buffer, with no additional queue or camera application.
+- This build checks `bandhuamajdoor/zapfast-mirror` for signed personal updates.
+  Only releases that retain the mirroring patch and pass the build checks are
+  published there. A failed upstream patch application keeps the last release.
+
 **System**
 
 - **Keep running when the window closes**: keep ZapFast linked in the tray.

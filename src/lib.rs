@@ -20,6 +20,7 @@ pub mod call_diag;
 pub mod call_tones;
 pub mod calls;
 pub mod camera;
+pub mod camera_mirror;
 #[cfg(any(test, feature = "demo"))]
 pub mod demo;
 pub mod diagnostics;

@@ -337,6 +337,7 @@ fn run() -> eframe::Result<()> {
         icon: Some("zapfast".into()),
     });
     let settings = settings::Settings::load(&dirs.settings_file());
+    zapfast::camera_mirror::set_enabled(settings.mirror_camera_video);
     // The drawn title bar (Windows and Linux): GNOME's button layout and
     // icons, read once, and the choice every window is made with.
     fastframe_titlebar::init();

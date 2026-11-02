@@ -503,6 +503,8 @@ pub struct Settings {
     pub proxy: String,
     /// Ask GitHub once a day whether a newer release exists.
     pub check_for_updates: bool,
+    /// Mirror the local camera for both the outgoing video and self-preview.
+    pub mirror_camera_video: bool,
     /// Download verified updates in the background; restarting remains explicit.
     pub download_updates_automatically: bool,
     /// Voice and audio playback speed multiplier.
@@ -587,6 +589,7 @@ impl Default for Settings {
             keep_chats_archived: true,
             proxy: String::new(),
             check_for_updates: true,
+            mirror_camera_video: true,
             download_updates_automatically: false,
             save_contacts_to_phone: true,
             voice_speed: 1.0,

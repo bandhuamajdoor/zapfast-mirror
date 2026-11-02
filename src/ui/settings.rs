@@ -665,6 +665,16 @@ fn sections(app: &App) -> Vec<Section> {
         });
     }
 
+    let mut calls = Section::new(translated(locale, "Calls"));
+    calls.toggle(
+        translated(locale, "Mirror outgoing camera video"),
+        translated(
+            locale,
+            "Horizontally flips your video for you and the other participants.",
+        ),
+        |settings| &mut settings.mirror_camera_video,
+    );
+
     let mut system = Section::new(translated(locale, "System"));
     system.toggle(
         translated(locale, "Keep running when the window closes"),
@@ -896,6 +906,7 @@ fn sections(app: &App) -> Vec<Section> {
         chats,
         notifications,
         privacy,
+        calls,
         system,
         account_section,
         files,

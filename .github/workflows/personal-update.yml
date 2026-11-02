@@ -1,0 +1,139 @@
+name: Personal mirror update
+
+on:
+  schedule:
+    - cron: '17 7 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: personal-mirror-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    permissions:
+      contents: write
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prepare current stable upstream with the personal patch
+        id: prepare
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 personal/prepare.py
+      - name: Verify personal build contract
+        if: steps.prepare.outputs.changed == 'true'
+        run: python3 personal/verify.py
+      - name: Install GUI build dependencies
+        if: steps.prepare.outputs.changed == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libwayland-dev libgl1-mesa-dev libasound2-dev libpipewire-0.3-dev clang libclang-dev cmake perl nasm xvfb
+      - name: Install the upstream-pinned Rust toolchain
+        if: steps.prepare.outputs.changed == 'true'
+        run: rustup show active-toolchain
+      - name: Formatting
+        if: steps.prepare.outputs.changed == 'true'
+        run: cargo fmt --all --check
+      - name: Clippy (default features)
+        if: steps.prepare.outputs.changed == 'true'
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Clippy (all features)
+        if: steps.prepare.outputs.changed == 'true'
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+      - name: Tests (default features)
+        if: steps.prepare.outputs.changed == 'true'
+        run: cargo test --locked --all-targets
+      - name: Tests (all features)
+        if: steps.prepare.outputs.changed == 'true'
+        run: cargo test --locked --all-targets --all-features
+      - name: Documentation
+        if: steps.prepare.outputs.changed == 'true'
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --locked --all-features --no-deps
+      - name: Build and capture synthetic Settings
+        if: steps.prepare.outputs.changed == 'true'
+        run: |
+          cargo build --locked --features demo
+          mkdir -p personal-evidence
+          xvfb-run -a target/debug/zapfast --demo --demo-page settings --demo-shot personal-evidence/settings.png
+      - name: Build the optimized app
+        if: steps.prepare.outputs.changed == 'true'
+        run: cargo build --locked --release
+      - name: Package the tested app
+        if: steps.prepare.outputs.changed == 'true'
+        env:
+          RELEASE_TAG: ${{ steps.prepare.outputs.tag }}
+        run: |
+          name="zapfast-${RELEASE_TAG}-x86_64-unknown-linux-gnu"
+          mkdir -p "dist/$name"
+          cp target/release/zapfast packaging/zapfast-portable.txt LICENSE THIRD-PARTY-NOTICES.md "dist/$name/"
+          cp personal/upstream.json personal/update-public-key.hex "dist/$name/"
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          rm -r "dist/$name"
+      - name: Sign and verify the release
+        if: steps.prepare.outputs.changed == 'true'
+        env:
+          ZAPFAST_UPDATE_SIGNING_KEY: ${{ secrets.ZAPFAST_UPDATE_SIGNING_KEY }}
+        run: python3 personal/sign.py
+      - name: Commit the tested source and publish the signed build
+        if: steps.prepare.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.prepare.outputs.tag }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git config credential.helper '!gh auth git-credential'
+          git add -A -- . ':!personal-evidence'
+          if ! git diff --cached --quiet; then
+            git commit -m "Track upstream ${RELEASE_TAG} with personal video mirroring"
+          fi
+          git push origin HEAD:main
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          state = json.loads(Path('personal/upstream.json').read_text())
+          Path('personal-evidence/release.md').write_text(
+              f"Personal Linux build of upstream {state['upstream_tag']} ({state['upstream_commit']}).\n\n"
+              "Includes Settings > Calls > Mirror outgoing camera video, enabled initially and saved across updates. "
+              "Both the outgoing video and self-preview are mirrored. No extra camera application or frame queue.\n\n"
+              "Passed formatting, Clippy, tests with default/all features, documentation and an optimized release build. "
+              "The update manifest is Ed25519-signed with this fork's publisher key.\n\n"
+              "The daily workflow keeps the last working release if the patch or checks fail. "
+              "The app downloads personal updates; restarting remains your choice.\n"
+          )
+          PY
+          # Release tag points to the exact source that passed the checks.
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" dist/* --clobber
+          else
+            gh release create "$RELEASE_TAG" dist/* --target "$(git rev-parse HEAD)" --title "ZapFast Mirror ${RELEASE_TAG}" --notes-file personal-evidence/release.md --prerelease=false --latest
+          fi
+      - name: Save synthetic UI evidence
+        if: always() && steps.prepare.outputs.changed == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: personal-mirror-evidence
+          path: personal-evidence/
+          if-no-files-found: ignore
+      - name: Report a failed update without replacing the working release
+        if: failure()
+        run: echo 'Update failed. The last signed personal release is still available; inspect this run before retrying.' >> "$GITHUB_STEP_SUMMARY"
