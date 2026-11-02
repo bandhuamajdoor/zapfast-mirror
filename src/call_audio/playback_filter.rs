@@ -140,7 +140,13 @@ mod tests {
             streaming.process(chunk);
         }
         assert_eq!(whole, chunks, "packet boundaries must not reset the filter");
-        assert!(chunks.chunks_exact(2).all(|frame| frame[1] == 0.0));
+        assert!(
+            chunks
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .all(|frame| frame[1] == 0.0)
+        );
     }
 
     #[test]
