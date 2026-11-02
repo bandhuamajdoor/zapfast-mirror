@@ -1,0 +1,286 @@
+diff --git c/docs/_reference/settings-and-files.md w/docs/_reference/settings-and-files.md
+index f1a512a..e274a2c 100644
+--- c/docs/_reference/settings-and-files.md
++++ w/docs/_reference/settings-and-files.md
+@@ -224,6 +224,17 @@ name or description, in the interface language or in English.
+   them, including people without a local chat. Changes require a connection.
+ - **App lock**: hide ZapFast behind a password. See [App lock](#app-lock).
+ 
++**Calls (personal build)**
++
++- **Mirror outgoing camera video**: horizontally flip the camera for both the
++  local preview and the other participants. Enabled initially in this personal
++  build; the saved choice survives updates and applies during a call without
++  restarting the camera. Incoming video is unaffected. Processing reuses the
++  existing frame buffer, with no additional queue or camera application.
++- This build checks `bandhuamajdoor/zapfast-mirror` for signed personal updates.
++  Only releases that retain the mirroring patch and pass the build checks are
++  published there. A failed upstream patch application keeps the last release.
++
+ **System**
+ 
+ - **Keep running when the window closes**: keep ZapFast linked in the tray.
+diff --git c/src/app.rs w/src/app.rs
+index 31879c3..1222116 100644
+--- c/src/app.rs
++++ w/src/app.rs
+@@ -9671,7 +9671,10 @@ impl App {
+                 self.search_hits.clear();
+                 self.mark_settings_dirty();
+             }
+-            Action::SettingsChanged => self.mark_settings_dirty(),
++            Action::SettingsChanged => {
++                crate::camera_mirror::set_enabled(self.settings.mirror_camera_video);
++                self.mark_settings_dirty();
++            }
+             Action::SetAccountPrivacy { kind, choice } => {
+                 // The value lives on the phone: nothing is written without a
+                 // connection and a snapshot to write against.
+diff --git c/src/camera.rs w/src/camera.rs
+index f5cbdae..e317847 100644
+--- c/src/camera.rs
++++ w/src/camera.rs
+@@ -125,6 +125,7 @@ impl Source {
+                 return false;
+             };
+             picture.scale_into(size, out);
++            crate::camera_mirror::apply_if_enabled(out, size);
+             true
+         });
+         match converted {
+diff --git c/src/camera_mirror.rs w/src/camera_mirror.rs
+new file mode 100644
+index 0000000..d8dca2a
+--- /dev/null
++++ w/src/camera_mirror.rs
+@@ -0,0 +1,73 @@
++//! Personal camera mirroring, shared by the outgoing encoder and self-preview.
++//!
++//! One relaxed atomic read per delivered frame, no allocation, queue or extra thread.
++
++use std::sync::atomic::{AtomicBool, Ordering};
++
++static ENABLED: AtomicBool = AtomicBool::new(true);
++
++/// Applies the saved preference without reopening the camera or encoder.
++pub fn set_enabled(enabled: bool) {
++    ENABLED.store(enabled, Ordering::Relaxed);
++}
++
++/// Mirrors only captured local frames, before either consumer reads them.
++pub fn apply_if_enabled(frame: &mut [u8], size: (usize, usize)) {
++    if ENABLED.load(Ordering::Relaxed) {
++        mirror_i420(frame, size);
++    }
++}
++
++/// Reverses columns independently in the tightly packed Y, U and V planes.
++///
++/// The capture module supplies nonzero, even dimensions and an exact-size buffer.
++/// No row changes position, and chroma uses half the luma width and height.
++pub fn mirror_i420(frame: &mut [u8], (width, height): (usize, usize)) {
++    assert!(width > 0 && height > 0 && width.is_multiple_of(2) && height.is_multiple_of(2));
++    let luma_len = width * height;
++    let chroma_len = luma_len / 4;
++    assert_eq!(frame.len(), luma_len + 2 * chroma_len);
++    let (y, chroma) = frame.split_at_mut(luma_len);
++    let (u, v) = chroma.split_at_mut(chroma_len);
++    for row in y.chunks_exact_mut(width) {
++        row.reverse();
++    }
++    for plane in [u, v] {
++        for row in plane.chunks_exact_mut(width / 2) {
++            row.reverse();
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn mirrors_all_three_planes_without_flipping_rows_or_swapping_chroma() {
++        let mut frame: Vec<u8> = (0..24).collect();
++        let pointer = frame.as_ptr();
++        mirror_i420(&mut frame, (4, 4));
++        assert_eq!(
++            frame,
++            [
++                3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8, 15, 14, 13, 12, 17, 16, 19, 18, 21, 20, 23,
++                22
++            ]
++        );
++        assert_eq!(frame.as_ptr(), pointer, "the existing buffer is reused");
++    }
++
++    #[test]
++    fn mirroring_twice_restores_landscape_portrait_and_minimum_frames() {
++        for (width, height) in [(2, 2), (2, 6), (8, 2), (640, 480), (720, 1280)] {
++            let original: Vec<u8> = (0..width * height * 3 / 2)
++                .map(|value| (value % 251) as u8)
++                .collect();
++            let mut frame = original.clone();
++            mirror_i420(&mut frame, (width, height));
++            mirror_i420(&mut frame, (width, height));
++            assert_eq!(frame, original);
++        }
++    }
++}
+diff --git c/src/lib.rs w/src/lib.rs
+index d388da9..3a454a5 100644
+--- c/src/lib.rs
++++ w/src/lib.rs
+@@ -20,6 +20,7 @@ pub mod call_diag;
+ pub mod call_tones;
+ pub mod calls;
+ pub mod camera;
++pub mod camera_mirror;
+ #[cfg(any(test, feature = "demo"))]
+ pub mod demo;
+ pub mod diagnostics;
+diff --git c/src/main.rs w/src/main.rs
+index 3addf3e..a93b381 100644
+--- c/src/main.rs
++++ w/src/main.rs
+@@ -337,6 +337,7 @@ fn run() -> eframe::Result<()> {
+         icon: Some("zapfast".into()),
+     });
+     let settings = settings::Settings::load(&dirs.settings_file());
++    zapfast::camera_mirror::set_enabled(settings.mirror_camera_video);
+     // The drawn title bar (Windows and Linux): GNOME's button layout and
+     // icons, read once, and the choice every window is made with.
+     fastframe_titlebar::init();
+diff --git c/src/settings.rs w/src/settings.rs
+index cc60f9e..2dccd99 100644
+--- c/src/settings.rs
++++ w/src/settings.rs
+@@ -503,6 +503,8 @@ pub struct Settings {
+     pub proxy: String,
+     /// Ask GitHub once a day whether a newer release exists.
+     pub check_for_updates: bool,
++    /// Mirror the local camera for both the outgoing video and self-preview.
++    pub mirror_camera_video: bool,
+     /// Download verified updates in the background; restarting remains explicit.
+     pub download_updates_automatically: bool,
+     /// Voice and audio playback speed multiplier.
+@@ -587,6 +589,7 @@ impl Default for Settings {
+             keep_chats_archived: true,
+             proxy: String::new(),
+             check_for_updates: true,
++            mirror_camera_video: true,
+             download_updates_automatically: false,
+             save_contacts_to_phone: true,
+             voice_speed: 1.0,
+diff --git c/src/ui/settings.rs w/src/ui/settings.rs
+index f0ac9d5..352bb4f 100644
+--- c/src/ui/settings.rs
++++ w/src/ui/settings.rs
+@@ -665,6 +665,16 @@ fn sections(app: &App) -> Vec<Section> {
+         });
+     }
+ 
++    let mut calls = Section::new(translated(locale, "Calls"));
++    calls.toggle(
++        translated(locale, "Mirror outgoing camera video"),
++        translated(
++            locale,
++            "Horizontally flips your video for you and the other participants.",
++        ),
++        |settings| &mut settings.mirror_camera_video,
++    );
++
+     let mut system = Section::new(translated(locale, "System"));
+     system.toggle(
+         translated(locale, "Keep running when the window closes"),
+@@ -896,6 +906,7 @@ fn sections(app: &App) -> Vec<Section> {
+         chats,
+         notifications,
+         privacy,
++        calls,
+         system,
+         account_section,
+         files,
+diff --git c/src/updates.rs w/src/updates.rs
+index b6367d9..f2147c0 100644
+--- c/src/updates.rs
++++ w/src/updates.rs
+@@ -22,12 +22,11 @@ pub const CONFIG: UpdateConfig = UpdateConfig {
+         executable_names: &[],
+         legacy_bundle_names: &["FastsApp.app"],
+     },
+-    publisher_key: Some(include_str!("../assets/update-public-key.hex")),
+-    // The next release key, backed up outside GitHub. Releases stay signed
+-    // with the current key until installs trust this one too.
+-    additional_publisher_keys: &[include_str!("../assets/update-public-key-next.hex")],
++    publisher_key: Some(include_str!("../personal/update-public-key.hex")),
++    // Personal builds accept only the personal release publisher.
++    additional_publisher_keys: &[],
+     ..UpdateConfig::new(
+-        "crmne/zapfast",
++        "bandhuamajdoor/zapfast-mirror",
+         "ZapFast",
+         "zapfast",
+         env!("CARGO_PKG_VERSION"),
+diff --git c/tests/camera_mirroring.rs w/tests/camera_mirroring.rs
+new file mode 100644
+index 0000000..38ec1ae
+--- /dev/null
++++ w/tests/camera_mirroring.rs
+@@ -0,0 +1,56 @@
++use openh264::formats::YUVSource;
++use zapfast::{camera, camera_mirror, settings::Settings};
++
++#[test]
++fn mirror_preference_survives_serialization_and_old_settings_enable_it() {
++    let old: Settings = serde_json::from_str("{}").unwrap();
++    assert!(old.mirror_camera_video);
++    for enabled in [false, true] {
++        let settings: Settings =
++            serde_json::from_value(serde_json::json!({"mirror_camera_video": enabled})).unwrap();
++        let saved = serde_json::to_string(&settings).unwrap();
++        let restored: Settings = serde_json::from_str(&saved).unwrap();
++        assert_eq!(restored.mirror_camera_video, enabled);
++    }
++}
++
++#[test]
++fn mirroring_reaches_encoded_video_and_the_shared_preview_buffer() {
++    let (width, height) = (64, 32);
++    let raw: Vec<u8> = (0..height)
++        .flat_map(|_| (0..width).map(|x| if x < width / 2 { 24 } else { 224 }))
++        .collect();
++    let picture = camera::to_i420(camera::Pixel::Gray, &raw, width, height).unwrap();
++    let mut shared = vec![0; width * height * 3 / 2];
++    picture.scale_into((width, height), &mut shared);
++    camera_mirror::set_enabled(false);
++    camera_mirror::apply_if_enabled(&mut shared, (width, height));
++    assert_eq!(&shared[..width * height], raw);
++    camera_mirror::set_enabled(true);
++    camera_mirror::apply_if_enabled(&mut shared, (width, height));
++    assert_eq!(shared[4], 224, "the shared preview input is mirrored");
++    assert_eq!(shared[width - 5], 24);
++    let yuv = openh264::formats::YUVBuffer::from_vec(shared, width, height);
++    let mut encoder = openh264::encoder::Encoder::new().unwrap();
++    let encoded = encoder.encode(&yuv).unwrap().to_vec();
++    let mut decoder = openh264::decoder::Decoder::new().unwrap();
++    let decoded = decoder.decode(&encoded).unwrap().unwrap();
++    let stride = decoded.strides().0;
++    assert!(decoded.y()[8 * stride + 4] > 180, "remote left is bright");
++    assert!(
++        decoded.y()[8 * stride + width - 5] < 60,
++        "remote right is dark"
++    );
++}
++
++#[test]
++fn personal_updates_trust_only_the_personal_publisher() {
++    let config = &zapfast::updates::CONFIG;
++    assert_eq!(config.repository, "bandhuamajdoor/zapfast-mirror");
++    assert!(config.additional_publisher_keys.is_empty());
++    assert_eq!(
++        config.publisher_key.unwrap().trim(),
++        include_str!("../personal/update-public-key.hex").trim()
++    );
++    config.validate().unwrap();
++}

@@ -1,0 +1,232 @@
+name: Personal mirror update
+
+on:
+  schedule:
+    - cron: '17 7 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: personal-mirror-release
+  cancel-in-progress: false
+
+jobs:
+  quality:
+    outputs:
+      changed: ${{ steps.prepare.outputs.changed }}
+      tag: ${{ steps.prepare.outputs.tag }}
+      commit: ${{ steps.commit.outputs.commit }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    permissions:
+      contents: write
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_BUILD_JOBS: '4'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check updater failure and signing paths
+        run: python3 personal/test_update_pipeline.py
+      - name: Prepare current stable upstream with the personal patch
+        id: prepare
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 personal/prepare.py
+      - name: Verify personal build contract
+        if: steps.prepare.outputs.changed == 'true'
+        run: python3 personal/verify.py
+      - name: Install GUI build dependencies
+        if: steps.prepare.outputs.changed == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-0 libwayland-dev libgl1-mesa-dev libasound2-dev libpipewire-0.3-dev clang libclang-dev cmake perl nasm xvfb
+      - name: Install the upstream-pinned Rust toolchain
+        if: steps.prepare.outputs.changed == 'true'
+        run: rustup show active-toolchain
+      - name: Formatting
+        if: steps.prepare.outputs.changed == 'true'
+        run: cargo fmt --all --check
+      - name: Check the mirroring processing budget
+        if: steps.prepare.outputs.changed == 'true'
+        run: python3 personal/benchmark.py
+      - name: Clippy (default features)
+        if: steps.prepare.outputs.changed == 'true'
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Clippy (all features)
+        if: steps.prepare.outputs.changed == 'true'
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+      - name: Tests (default features)
+        if: steps.prepare.outputs.changed == 'true'
+        run: cargo test --locked --all-targets
+      - name: Tests (all features)
+        if: steps.prepare.outputs.changed == 'true'
+        run: cargo test --locked --all-targets --all-features
+      - name: Documentation
+        if: steps.prepare.outputs.changed == 'true'
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --locked --all-features --no-deps
+      - name: Build and capture synthetic Settings
+        if: steps.prepare.outputs.changed == 'true'
+        run: |
+          cargo build --locked --features demo
+          mkdir -p personal-evidence
+          xvfb-run -a target/debug/zapfast --demo --demo-page settings --demo-shot personal-evidence/settings.png
+      - name: Commit the validated source
+        id: commit
+        if: steps.prepare.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.prepare.outputs.tag }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git config credential.helper '!gh auth git-credential'
+          git add -A -- . ':!personal-evidence'
+          if ! git diff --cached --quiet; then
+            git commit -m "Track upstream ${RELEASE_TAG} with personal video mirroring"
+          fi
+          git push origin HEAD:main
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Save synthetic UI evidence
+        if: always() && steps.prepare.outputs.changed == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: personal-mirror-evidence
+          path: personal-evidence/
+          if-no-files-found: ignore
+      - name: Report a failed update without replacing the working release
+        if: failure()
+        run: echo 'Update failed. The last signed personal release is still available; inspect this run before retrying.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep the daily schedule active during quiet upstream months
+        if: success() && steps.prepare.outputs.changed == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          from datetime import date
+          from pathlib import Path
+          import subprocess
+          path = Path('personal/keepalive.txt')
+          previous = date.fromisoformat(path.read_text().strip()) if path.exists() else date(1970, 1, 1)
+          if (date.today() - previous).days >= 28:
+              path.write_text(date.today().isoformat() + '\n')
+              subprocess.run(['git', 'config', 'user.name', 'github-actions[bot]'], check=True)
+              subprocess.run(['git', 'config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com'], check=True)
+              subprocess.run(['git', 'config', 'credential.helper', '!gh auth git-credential'], check=True)
+              subprocess.run(['git', 'add', 'personal/keepalive.txt'], check=True)
+              subprocess.run(['git', 'commit', '-m', 'Keep the personal update schedule active'], check=True)
+              subprocess.run(['git', 'push', 'origin', 'HEAD:main'], check=True)
+          PY
+
+  release-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    outputs:
+      changed: ${{ steps.prepare.outputs.changed }}
+    env:
+      CARGO_BUILD_JOBS: '4'
+      CARGO_INCREMENTAL: '0'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prepare the same stable release with mirroring
+        id: prepare
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 personal/prepare.py
+      - name: Verify the personal patch
+        if: steps.prepare.outputs.changed == 'true'
+        run: python3 personal/verify.py
+      - name: Build dependencies
+        if: steps.prepare.outputs.changed == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-0 libwayland-dev libgl1-mesa-dev libasound2-dev libpipewire-0.3-dev clang libclang-dev cmake perl nasm
+      - name: Build the optimized app from source
+        if: steps.prepare.outputs.changed == 'true'
+        run: cargo build --locked --release
+      - name: Package the app
+        if: steps.prepare.outputs.changed == 'true'
+        env:
+          RELEASE_TAG: ${{ steps.prepare.outputs.tag }}
+        run: |
+          name="zapfast-${RELEASE_TAG}-x86_64-unknown-linux-gnu"
+          mkdir -p "dist/$name"
+          cp target/release/zapfast packaging/zapfast-portable.txt LICENSE THIRD-PARTY-NOTICES.md "dist/$name/"
+          cp personal/upstream.json personal/update-public-key.hex "dist/$name/"
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          rm -r "dist/$name"
+      - name: Save unsigned bundle for the gated publisher
+        if: steps.prepare.outputs.changed == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: unsigned-personal-linux
+          path: dist/*.tar.gz
+
+  publish:
+    needs: [quality, release-build]
+    if: needs.quality.outputs.changed == 'true' && needs.release-build.outputs.changed == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.quality.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: unsigned-personal-linux
+          path: dist
+      - name: Require the compiled bundle to match the validated source
+        run: |
+          python3 - <<'PYCODE'
+          import json, tarfile
+          from pathlib import Path
+          state = json.loads(Path('personal/upstream.json').read_text())
+          packages = list(Path('dist').glob('*.tar.gz'))
+          assert len(packages) == 1
+          with tarfile.open(packages[0]) as archive:
+              metadata = [item for item in archive.getmembers() if item.name.endswith('/upstream.json')]
+              assert len(metadata) == 1
+              assert json.load(archive.extractfile(metadata[0])) == state, 'Upstream or patch changed between the build and validation jobs'
+          Path('release-notes.md').write_text(
+              f"Personal Linux build of upstream {state['upstream_tag']} ({state['upstream_commit']}).\n\n"
+              "Includes Settings > Calls > Mirror outgoing camera video, enabled initially and saved across updates. "
+              "Both the outgoing video and self-preview are mirrored. No extra camera application or frame queue.\n\n"
+              "Passed formatting, Clippy, tests with default/all features, documentation, a mirroring processing-budget check and an optimized release build. "
+              "Updates are Ed25519-signed with this fork's publisher key.\n\n"
+              "The daily workflow keeps the last working release if the patch or checks fail. "
+              "The app downloads personal updates; restarting remains your choice.\n"
+          )
+          PYCODE
+      - name: Sign and verify the release
+        env:
+          ZAPFAST_UPDATE_SIGNING_KEY: ${{ secrets.ZAPFAST_UPDATE_SIGNING_KEY }}
+        run: python3 personal/sign.py
+      - name: Publish only the validated signed build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.quality.outputs.tag }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" dist/* --clobber
+          else
+            gh release create "$RELEASE_TAG" dist/* --target "$(git rev-parse HEAD)" --title "ZapFast Mirror ${RELEASE_TAG}" --notes-file release-notes.md --prerelease=false --latest
+          fi
