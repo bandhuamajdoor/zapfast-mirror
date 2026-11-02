@@ -65,6 +65,7 @@ def main():
     except urllib.error.HTTPError as error:
         if error.code != 404:
             raise
+        error.close()
         complete = False
     changed = previous != state or not complete
     if not changed:

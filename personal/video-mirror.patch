@@ -224,10 +224,10 @@ index b6367d9..f2147c0 100644
          env!("CARGO_PKG_VERSION"),
 diff --git c/tests/camera_mirroring.rs w/tests/camera_mirroring.rs
 new file mode 100644
-index 0000000..774505e
+index 0000000..38ec1ae
 --- /dev/null
 +++ w/tests/camera_mirroring.rs
-@@ -0,0 +1,58 @@
+@@ -0,0 +1,56 @@
 +use openh264::formats::YUVSource;
 +use zapfast::{camera, camera_mirror, settings::Settings};
 +
@@ -236,10 +236,8 @@ index 0000000..774505e
 +    let old: Settings = serde_json::from_str("{}").unwrap();
 +    assert!(old.mirror_camera_video);
 +    for enabled in [false, true] {
-+        let settings = Settings {
-+            mirror_camera_video: enabled,
-+            ..Settings::default()
-+        };
++        let settings: Settings =
++            serde_json::from_value(serde_json::json!({"mirror_camera_video": enabled})).unwrap();
 +        let saved = serde_json::to_string(&settings).unwrap();
 +        let restored: Settings = serde_json::from_str(&saved).unwrap();
 +        assert_eq!(restored.mirror_camera_video, enabled);

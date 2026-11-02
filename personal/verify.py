@@ -6,6 +6,7 @@ root = Path(__file__).resolve().parents[1]
 required = {
     "src/lib.rs": ["pub mod camera_mirror;"],
     "src/camera.rs": ["crate::camera_mirror::apply_if_enabled(out, size);"],
+    "src/calls.rs": ["source.read(&mut bytes, plan.size)", "let luma = &bytes[..luma_len];"],
     "src/camera_mirror.rs": ["AtomicBool", "row.reverse();", "Ordering::Relaxed"],
     "src/settings.rs": ["pub mirror_camera_video: bool,", "mirror_camera_video: true,"],
     "src/main.rs": ["camera_mirror::set_enabled(settings.mirror_camera_video)"],

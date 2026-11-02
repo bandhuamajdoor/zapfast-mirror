@@ -6,10 +6,8 @@ fn mirror_preference_survives_serialization_and_old_settings_enable_it() {
     let old: Settings = serde_json::from_str("{}").unwrap();
     assert!(old.mirror_camera_video);
     for enabled in [false, true] {
-        let settings = Settings {
-            mirror_camera_video: enabled,
-            ..Settings::default()
-        };
+        let settings: Settings =
+            serde_json::from_value(serde_json::json!({"mirror_camera_video": enabled})).unwrap();
         let saved = serde_json::to_string(&settings).unwrap();
         let restored: Settings = serde_json::from_str(&saved).unwrap();
         assert_eq!(restored.mirror_camera_video, enabled);
