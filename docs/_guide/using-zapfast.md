@@ -693,7 +693,9 @@ a group that hides numbers, WhatsApp sends only a masked one such as
 To find a contact in **New chat**, type part of their name or number. Each
 word you type matches the start of a word in the name, in order: `will shak`
 finds William Shakespeare, and `j d` finds John Doe. A plain part of the name
-also works, such as `liam`.
+also works, such as `liam`. The first match is highlighted; press Enter to open
+its chat. The list is only as tall as its matches, up to the space the window
+leaves.
 
 Connection and history-sync notices appear below the open chat’s header,
 leaving the chat list in place. In a narrow window showing only the list,
@@ -721,7 +723,8 @@ contact list, and Escape closes the dialog.
 
 The search bar finds chats by name, number, or latest message; searches all
 messages stored on this computer; and finds contacts without an existing chat.
-Use `↑`/`↓` to select a matching chat and Enter to open it ready for typing.
+Names match as they do in **New chat**: each word you type can start a word of
+the name, in order, so `will shak` finds William Shakespeare. Use `↑`/`↓` to select a matching chat and Enter to open it ready for typing.
 Click a message result to jump to it, or a contact to start a chat. Use
 `Alt+↑/↓`, or `Ctrl+Shift+[` and `Ctrl+Shift+]` as in WhatsApp, to switch chats
 without leaving the composer (Command instead of Ctrl on macOS), and
@@ -866,6 +869,10 @@ panel closes. In a narrow window the panel is a page of its own: **Back**
 returns to the chat. A locked
 chat's media is listed only while the locked folder is open.
 
+A person's details also list the groups you are both in, under a heading
+such as **3 groups in common**: click one to open it. Groups you left and
+locked chats are not listed.
+
 **Development builds** also show a group's description in the panel. You can
 select and copy its text, and a long description scrolls. To change the
 description, use your phone.
@@ -959,9 +966,11 @@ Shift+Tab bring the focused button into view, too.
 ## Notifications and the tray
 
 Closing the window keeps ZapFast linked in the tray, unless **Keep running when
-the window closes** is off, which also leaves out the tray icon. On macOS, click the menu
-bar icon to open its menu, then choose **Show or hide ZapFast** to reopen the
-window. On Linux and Windows, click the tray icon to reopen it, and click it
+the window closes** is off, which also leaves out the tray icon. On macOS,
+closing the window always keeps ZapFast running in the Dock, as other Mac apps
+do: click the Dock icon to reopen the window, and turn off **Show in the menu
+bar** if you do not want the menu bar icon. With the icon, click it to open its
+menu, then choose **Show or hide ZapFast**. On Linux and Windows, click the tray icon to reopen it, and click it
 again to hide a window that is in front. Launching the
 app again reopens the window on every platform. To quit, use **Quit** in the
 tray menu, or **Quit** in the Dock icon's menu on macOS, or on Linux **Quit ZapFast** in the

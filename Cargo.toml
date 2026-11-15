@@ -1,6 +1,6 @@
 [package]
 name = "zapfast"
-version = "0.21.1-mirror.2"
+version = "0.21.2-mirror.2"
 edition = "2024"
 rust-version = "1.98"
 license = "MIT"
@@ -70,16 +70,13 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 # (#1763), which the call log prints. The sqlite-wasm-rs 0.6 edge that clashed
 # with rusqlite 0.40 (#1764) is behind a `js` feature since #1765. This is
 # upstream main with XOR FEC for 1:1 video, which an iPhone relies on since it
-# never NACKs (#1783), and dropping video queued before the relay allocates
-# (#1782). The crmne/whatsapp-rust fork (branch `voip-video-timing`) is
-# upstream main ac9d0df3 plus two open changes: interleaved video FEC against
-# burst loss (https://github.com/oxidezap/whatsapp-rust/pull/1789) and video
-# timed from capture, so a peer can lip-sync it
-# (https://github.com/oxidezap/whatsapp-rust/pull/1790). Back to upstream once
-# both merge, and to crates.io once released. `voip` is the call stack: signaling,
-# the sans-IO media engine with MLOW and libopus codecs, and the native UDP
-# relay transport.
-whatsapp-rust = { git = "https://github.com/crmne/whatsapp-rust", rev = "94f7c1376f8f6a77c55d85570a260600ad27de0b", default-features = false, features = ["sqlite-storage", "tokio-transport", "tokio-runtime", "ureq-client", "tokio-native", "voip"] }
+# never NACKs (#1783), dropping video queued before the relay allocates
+# (#1782), interleaved video FEC against burst loss (#1789), video timed from
+# capture so a peer can lip-sync it (#1790), and the native relay RTC stack on
+# 0.21.1 (#1847). Back to crates.io once released. `voip` is the call stack:
+# signaling, the sans-IO media engine with MLOW and libopus codecs, and the
+# native UDP relay transport.
+whatsapp-rust = { git = "https://github.com/oxidezap/whatsapp-rust", rev = "e634d245f71d66e2ae55f79ef714c4ca01615ed8", default-features = false, features = ["sqlite-storage", "tokio-transport", "tokio-runtime", "ureq-client", "tokio-native", "voip"] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros", "fs", "net", "io-util"] }
 # Queue between the call's audio streams and the engine.
 async-channel = "2.5"
@@ -168,56 +165,56 @@ libwebp-sys2 = { version = "0.2", features = ["1_2"] }
 # Shared foundation of Carmine's egui apps (github.com/crmne/fastframe). Every
 # crate comes from the same revision.
 # Bundled gettext catalogs: lookups and system language detection.
-fastframe-i18n = { git = "https://github.com/crmne/fastframe", tag = "v0.15.4" }
+fastframe-i18n = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # The icons! table, a loader that survives reduce_texture_memory, and the Lucide
 # icons shared with Spotifast.
-fastframe-icons = { git = "https://github.com/crmne/fastframe", tag = "v0.15.4" }
+fastframe-icons = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # The platform's interface font (Inter where there is none), and installed
 # fonts for other scripts.
-fastframe-fonts = { git = "https://github.com/crmne/fastframe", tag = "v0.15.4" }
+fastframe-fonts = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # Colour emoji in the platform's own style, with the bundled Noto behind
 # them, drawn off the interface thread.
-fastframe-emoji = { git = "https://github.com/crmne/fastframe", tag = "v0.15.4" }
+fastframe-emoji = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # Follows the desktop's hinting and glyph coverage, live through the portal.
-fastframe-text = { git = "https://github.com/crmne/fastframe", tag = "v0.15.4", features = ["watch"] }
+fastframe-text = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1", features = ["watch"] }
 # Palette files, the shared presets, and following Omarchy's theme live.
-fastframe-theme = { git = "https://github.com/crmne/fastframe", tag = "v0.15.4" }
+fastframe-theme = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # Logs to stderr and a per-run file, and records panics without their payload.
-fastframe-log = { git = "https://github.com/crmne/fastframe", tag = "v0.15.4" }
+fastframe-log = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # The tray item: StatusNotifier on Linux, tray-icon on Windows and macOS.
-fastframe-tray = { git = "https://github.com/crmne/fastframe", tag = "v0.15.4" }
+fastframe-tray = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # Keeps ZapFast running without a window, remembers its geometry, recovers it
 # off screen, and brings it forward on niri.
-fastframe-shell = { git = "https://github.com/crmne/fastframe", tag = "v0.15.4" }
+fastframe-shell = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # Window chrome: centres the macOS traffic lights on ZapFast's own header and
 # lets its headers move the window.
-fastframe-titlebar = { git = "https://github.com/crmne/fastframe", tag = "v0.15.4" }
+fastframe-titlebar = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # One running copy per user: the lock, and the channel a second launch uses.
-fastframe-instance = { git = "https://github.com/crmne/fastframe", tag = "v0.15.4" }
+fastframe-instance = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # The wheel step, and on Linux touchpad scale, glide and axis lock.
-fastframe-scroll = { git = "https://github.com/crmne/fastframe", tag = "v0.15.4" }
+fastframe-scroll = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # The desktop entry name (Flatpak-aware), the GNOME check, and GNOME's clock
 # format through the desktop portal.
-fastframe-desktop = { git = "https://github.com/crmne/fastframe", tag = "v0.15.4" }
+fastframe-desktop = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # Process-wide Dock icon and unread badge, plus the Windows taskbar overlay.
-fastframe-dock = { git = "https://github.com/crmne/fastframe", tag = "v0.15.4" }
+fastframe-dock = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # Starting in the tray at login: XDG autostart or the background portal,
 # SMAppService with the bundled agent, the Windows Run key.
-fastframe-autostart = { git = "https://github.com/crmne/fastframe", tag = "v0.15.4" }
+fastframe-autostart = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # One native notification API for delivery, permissions, clicks and withdrawal.
-fastframe-notifications = { git = "https://github.com/crmne/fastframe", tag = "v0.15.4" }
+fastframe-notifications = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # Sleep and wake as the system reports them, so the link reconnects after a
 # wake (Linux and Windows).
-fastframe-power = { git = "https://github.com/crmne/fastframe", tag = "v0.15.4" }
+fastframe-power = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # Saves that are never half written: settings and the chosen wallpaper.
-fastframe-file = { git = "https://github.com/crmne/fastframe", tag = "v0.15.4" }
+fastframe-file = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # Every sound and recording: one device stream that idles while nothing plays,
 # follows the default device and reopens after failures. On Linux it plays to
 # PipeWire or PulseAudio itself, so Linux builds need libpipewire's headers and
 # clang.
-fastframe-audio = { git = "https://github.com/crmne/fastframe", tag = "v0.15.4" }
+fastframe-audio = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1" }
 # Self-update from GitHub releases with signed checksums, a helper and rollback.
-fastframe-update = { git = "https://github.com/crmne/fastframe", tag = "v0.15.4", features = ["reqwest"] }
+fastframe-update = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1", features = ["reqwest"] }
 
 [patch.crates-io]
 # crmne/egui apps-0.36.2, shared with Spotifast, RekordFlash and TonePush: egui
@@ -357,4 +354,4 @@ opt-level = 2
 [build-dependencies]
 # Compiles the PO catalogs to Rust, leaving out unfinished entries. Ordinary
 # builds do not need gettext tools.
-fastframe-i18n = { git = "https://github.com/crmne/fastframe", tag = "v0.15.4", features = ["build"] }
+fastframe-i18n = { git = "https://github.com/crmne/fastframe", tag = "v0.16.1", features = ["build"] }
